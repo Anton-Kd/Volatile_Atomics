@@ -1,48 +1,66 @@
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
+
 public class Analyzer {
 
-    public static BlockingQueue<String> queueSymbol_A = new ArrayBlockingQueue<>(100);
-    public static BlockingQueue<String> queueSymbol_B = new ArrayBlockingQueue<>(100);
-    public static BlockingQueue<String> queueSymbol_C = new ArrayBlockingQueue<>(100);
-    public static final long TEXTS = 10_000;
+    public static final int QUEUE_SIZE = 100;
+    public static final int TEXT_SIZE = 100_000;
+    public static final int TEXT_QUANTITY = 100_00;
+    public static final List<BlockingQueue<String>> queues = Arrays.asList(
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE),
+            new ArrayBlockingQueue<>(QUEUE_SIZE)
+    );
 
     public static void main(String[] args) throws InterruptedException {
-
-        Thread thread1 = new Thread(() -> {
-            for (int i = 0; i < TEXTS; i++) {
+        Thread producer = new Thread(() -> {
+            for (int i = 0; i < TEXT_QUANTITY; i++) {
+                String s = generateText("abc", TEXT_SIZE);
                 try {
-                queueSymbol_A.put(generateText("abc", 100_000));
-                System.out.println("\nПоложил 'a' " + i);
-                queueSymbol_B.put(generateText("abc", 100_000));
-                System.out.println("\nПоложил 'b' " + i);
-                queueSymbol_C.put(generateText("abc", 100_000));
-                System.out.println("\nПоложил 'c' " + i);
-//                Thread.sleep(200);
+                    for (BlockingQueue<String> queue : queues) {
+                        queue.put(s);
+                    }
                 } catch (InterruptedException e) {
                     return;
                 }
-
             }
-
         });
-
-        Thread thread2 = new Thread(() -> {
-            characterCounter(queueSymbol_A, 'a');
-        });
-        Thread thread3 = new Thread(() -> {
-            characterCounter(queueSymbol_B, 'b');
-        });
-        Thread thread4 = new Thread(() -> {
-            characterCounter(queueSymbol_C, 'c');
-        });
-
-        thread1.start();
-        thread2.start();
-        thread3.start();
-        thread4.start();
+        producer.start();
+        List<Thread> consumers = new ArrayList<>();
+        for (int i = 0; i < queues.size(); i++) {
+            int idx = i;
+            char c = (char) ('a' + i);
+            Thread consumer = new Thread(() -> {
+                BlockingQueue<String> queue = queues.get(idx);
+                String maxString = "";
+                long maxCount = 0;
+                for (int j = 0; j < TEXT_QUANTITY; j++) {
+                    try {
+                        String s = queue.take();
+                        long count = countChar(s, c);
+                        if (count > maxCount) {
+                            maxCount = count;
+                            maxString = s;
+                        }
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+                System.out.printf("Max count of letter %c - %d - found in the following string: " +
+                        "%s\n", c, maxCount, maxString.substring(0, 75) + "...");
+            });
+            consumer.start();
+            consumers.add(consumer);
+        }
+        for (Thread consumer : consumers) {
+            consumer.join();
+        }
+// no need to wait for producer, it should have returned before any of the consumers
     }
 
     public static String generateText(String letters, int length) {
@@ -54,21 +72,7 @@ public class Analyzer {
         return text.toString();
     }
 
-    public static void characterCounter(BlockingQueue<String> queueSymbol, char letter) {
-        long maxSymbol = 0;
-        try {
-             while (queueSymbol.isEmpty()) {
-                String string = queueSymbol.take();
-                long count = string.chars()
-                        .filter(ch -> ch == letter)
-                        .count();
-                if (count > maxSymbol) {
-                    maxSymbol = count;
-                }
-                 System.out.printf("Максимальное колличество символов %s равно %d штук\n", letter, maxSymbol);
-            }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+    private static long countChar(String s, char target) {
+        return s.chars().filter(c -> c == target).count();
     }
 }
